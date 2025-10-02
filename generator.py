@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
+# Copyright (C) 2025 Alex PB <chozabu@gmail.com>
+#
+# This file is part of SixCells.
 """
 Hexcells Level Generator for SixCells
 Generates procedural Hexcells levels with automatic clue minimization
