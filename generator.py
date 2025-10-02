@@ -15,12 +15,12 @@ from solver import *
 
 class HexCell:
     """Represents a single hexagonal cell"""
-    def __init__(self, x, y, is_blue=False):
+    def __init__(self, x, y, is_blue=False, info_type='+'):
         self.x = x
         self.y = y
         self.is_blue = is_blue
         self.revealed = False
-        self.info_type = '+'  # '.', '+', 'c', 'n'
+        self.info_type = info_type  # '.', '+', 'c', 'n'
         self.number = 0
         
     def to_string(self):
@@ -321,7 +321,10 @@ class LevelGenerator:
 
                 if dist <= radius*10:
                     is_blue = random.random() < 0.4#density of blue cells
-                    level.grid[grid_y][grid_x] = HexCell(grid_x, grid_y, is_blue)
+                    info_type = '+'
+                    if is_blue:
+                        info_type = random.choices(['+', '.'], weights=[0.3, 0.7])[0]
+                    level.grid[grid_y][grid_x] = HexCell(grid_x, grid_y, is_blue, info_type=info_type)
 
         # Reveal a few random non-blue cells
         all_cells = [cell for row in level.grid for cell in row if cell is not None and not cell.is_blue]
@@ -347,6 +350,8 @@ class LevelGenerator:
             for x in range(width):
                 cell = level.grid[y][x]
                 if not (cell and isinstance(cell, HexCell)):
+                    continue
+                if random.random() < 0.6:  # chance to add a hint
                     continue
                 for dx, dy, direction in directions:
                     hx, hy = x + dx, y + dy
@@ -387,8 +392,8 @@ class LevelGenerator:
         for y in range(33):
             for x in range(33):
                 cell = level.grid[y][x]
-                if isinstance(cell, HexCell) and cell.info_type == '+':
-                    clues.append(('flower', x, y))
+                if isinstance(cell, HexCell) and cell.info_type != '.':
+                    clues.append(('flower' if cell.is_blue else 'blackcell', x, y))
 
         # Shuffle for random removal order
         random.shuffle(clues)
@@ -458,7 +463,7 @@ class LevelGenerator:
         for y in range(33):
             for x in range(33):
                 cell = level.grid[y][x]
-                if isinstance(cell, HexCell) and cell.info_type == '+':
+                if isinstance(cell, HexCell) and cell.info_type != '.':
                     count += 1
         count += sum(1 for h in level.column_hints if h is not None)
         return count
