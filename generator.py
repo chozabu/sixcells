@@ -6,15 +6,11 @@ Generates procedural Hexcells levels with automatic clue minimization
 """
 
 import random
-import argparse
-import sys
-from collections import defaultdict
-from typing import List, Tuple, Set, Optional, Dict
+from typing import List, Tuple, Optional
 
 import common
 from common import *
 from solver import *
-#import player
 
 
 class HexCell:
@@ -90,72 +86,11 @@ class Cell(common.Cell):
         self.flower = False
         self.extra_text = ''
 
-    def mousePressEvent(self, e):
-        if e.button() == qt.RightButton and self.scene().playtest and self.display is not Cell.unknown:
-            self.display = Cell.unknown
-            self.upd()
-            return
-        if self.display is Cell.full and self.value is not None:
-            if e.button() == qt.LeftButton:
-                self.flower = not self.flower
-                return
-            if e.button() == qt.RightButton:
-                self.hidden = not self.hidden
-                self.flower = False
-                return
-        buttons = [qt.LeftButton, qt.RightButton]
-        if self.scene().swap_buttons:
-            buttons.reverse()
-        if e.button() == buttons[0]:
-            want = Cell.full
-        elif e.button() == buttons[1]:
-            want = Cell.empty
-        else:
-            return
-        if e.modifiers() & qt.ShiftModifier:
-            self.guess = None if self.guess == want else want
-            self.upd()
-            return
-        if self.display is Cell.unknown:
-            if self.kind == want:
-                self.display = self.kind
-                self.scene().undo_history.append([self])
-                self.upd()
-            else:
-                self.scene().mistakes += 1
-
-    @property
-    def hidden(self):
-        return self._text.opacity() < 1
-
-    @hidden.setter
-    def hidden(self, value):
-        self._text.setOpacity(0.2 if value else 1)
-        self.update()
-
     def reset_cache(self):
         pass
 
 
 class Column(common.Column):
-    def __init__(self):
-        common.Column.__init__(self)
-        self.beam = False
-
-    def beam(self):
-        if self.scene():
-            self.scene().update()
-
-    @property
-    def hidden(self):
-        return self.opacity() < 1
-
-    @hidden.setter
-    def hidden(self, value):
-        self.setOpacity(0.2 if value else 1)
-
-
-
     def reset_cache(self):
         pass
 
@@ -190,12 +125,6 @@ class Scene(common.Scene):
         self.mistakes = 0
 
         self.full_upd()
-
-
-    def set_swap_buttons(self, value):
-        self.swap_buttons = value
-
-
 
 
     @cached_property
@@ -279,32 +208,6 @@ class Scene(common.Scene):
                     self.mistakes += 1
         self.undo_history.append(correct)
 
-    def confirm_opposite_guesses(self):
-        self.confirm_guesses(opposite=True)
-
-    def undo(self):
-        if not self.undo_history:
-            return
-        last = self.undo_history.pop()
-        found = False
-        for cell in last:
-            if cell.display == Cell.unknown and not cell.guess:
-                continue
-            cell.display = Cell.unknown
-            cell.upd()
-            found = True
-        if not found:
-            self.undo()
-
-    def highlight_all_columns(self):
-        for col in self.all(Column):
-            if not col.hidden:
-                col.beam = True
-
-    def highlight_all_flowers(self):
-        for cell in self.all(Cell):
-            if not cell.hidden and cell.display is Cell.full and cell.value is not None:
-                cell.flower = True
 
 
 #============================
@@ -318,30 +221,6 @@ class GeneratedLevel:
         self.title = "Generated Level"
         self.author = "Generator"
         
-    def get_neighbors(self, x, y) -> List[Tuple[int, int]]:
-        """Get hexagonal neighbors of a cell"""
-        # Hexagonal grid neighbors (even-q vertical layout)
-        if y % 2 == 0:  # even rows
-            offsets = [(-1, -1), (0, -1), (-1, 0), (1, 0), (-1, 1), (0, 1)]
-        else:  # odd rows
-            offsets = [(0, -1), (1, -1), (-1, 0), (1, 0), (0, 1), (1, 1)]
-            
-        neighbors = []
-        for dx, dy in offsets:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < 33 and 0 <= ny < 33:
-                neighbors.append((nx, ny))
-        return neighbors
-    
-    def count_blue_neighbors(self, x, y) -> int:
-        """Count blue neighbors of a cell"""
-        count = 0
-        for nx, ny in self.get_neighbors(x, y):
-            cell = self.grid[ny][nx]
-            if isinstance(cell, HexCell) and cell.is_blue:
-                count += 1
-        return count
-    
     def get_line_cells(self, x, y, direction) -> List[Tuple[int, int]]:
         """Get all cells in a line from a given position and direction"""
         cells = []
@@ -401,15 +280,11 @@ class GeneratedLevel:
 
 class LevelGenerator:
     """Main generator class"""
-    
-    def __init__(self):
-        pass
-        
+
     def generate(self, max_attempts=1) -> Optional[GeneratedLevel]:
         """Generate a complete level with minimized clues"""
         for attempt in range(max_attempts):
             print(f"Generation attempt {attempt + 1}/{max_attempts}...")
-            
             level = self.create_pattern()
 
             if self.is_solvable(level):
@@ -417,13 +292,10 @@ class LevelGenerator:
                 self.minimize_clues(level)
                 print(f"Generated level with {self.count_clues(level)} clues")
                 return level
-            else:
-                print("Pattern not solvable, retrying...")
-                
-        print("Failed to generate solvable level after maximum attempts ", max_attempts)
-        print("returning level anyhow")
+            print("Pattern not solvable, retrying...")
+
+        print(f"Failed to generate solvable level after {max_attempts} attempts, returning anyway")
         return level
-        #return None
     
     def create_pattern(self) -> GeneratedLevel:
         """Create a properly aligned hex pattern of blue/black cells"""
@@ -506,35 +378,16 @@ class LevelGenerator:
             return 'c' if is_consecutive else 'n'
         return None
     
-    def find_hint_position(self, cells, level) -> Optional[Tuple[int, int]]:
-        """Find a good position to place a hint for a line"""
-        # Try to place near the middle or at an empty spot
-        for cx, cy in cells:
-            # Check if this position is empty
-            if level.grid[cy][cx] is None:
-                return (cx, cy)
-        # If no empty spot, place at first cell
-        if cells:
-            return cells[0]
-        return None
-    
     def minimize_clues(self, level: GeneratedLevel):
         """Remove redundant clues while maintaining solvability"""
-        # Collect all clues
         clues = []
-
-        # Column hints
-        for i, hint in enumerate(level.column_hints):
-            clues.append(('column', i))
-            #if random.random() > 0.30:
-            #    self.remove_clue(level, ('column', i))
-
-        # Flower hints
+        # Collect column hints and flower hints
+        for i in enumerate(level.column_hints):
+            clues.append(('column', i[0]))
         for y in range(33):
             for x in range(33):
                 cell = level.grid[y][x]
                 if isinstance(cell, HexCell) and cell.info_type == '+':
-                    #clues.append(('flower' if cell.is_blue else 'blackhint', x, y))
                     clues.append(('flower', x, y))
 
         # Shuffle for random removal order
