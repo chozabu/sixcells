@@ -220,7 +220,42 @@ class GeneratedLevel:
         self.column_hints = []
         self.title = "Generated Level"
         self.author = "Generator"
-        
+
+    def get_neighbors(self, x, y) -> List[Tuple[int, int]]:
+        """Get hexagonal neighbors of a cell using the game's coordinate system"""
+        # These are the 6 immediate neighbors in the game's hex layout
+        # From common.py: _neighbors_deltas = [(0, -2), (1, -1), (1, 1), (0, 2), (-1, 1), (-1, -1)]
+        offsets = [(0, -2), (1, -1), (1, 1), (0, 2), (-1, 1), (-1, -1)]
+
+        neighbors = []
+        for dx, dy in offsets:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < 33 and 0 <= ny < 33:
+                neighbors.append((nx, ny))
+        return neighbors
+
+    def are_neighbors(self, pos1: Tuple[int, int], pos2: Tuple[int, int]) -> bool:
+        """Check if two positions are neighbors"""
+        return pos2 in self.get_neighbors(pos1[0], pos1[1])
+
+    def all_grouped(self, positions: set) -> bool:
+        """Check if all positions form one connected group"""
+        if not positions:
+            return True
+
+        # Start with one position
+        grouped = {next(iter(positions))}
+        anything_to_add = True
+
+        while anything_to_add:
+            anything_to_add = False
+            for pos in positions - grouped:
+                if any(self.are_neighbors(pos, grouped_pos) for grouped_pos in grouped):
+                    anything_to_add = True
+                    grouped.add(pos)
+
+        return len(grouped) == len(positions)
+
     def get_line_cells(self, x, y, direction) -> List[Tuple[int, int]]:
         """Get all cells in a line from a given position and direction"""
         cells = []
@@ -278,10 +313,32 @@ class GeneratedLevel:
             lines.append(row)
         return "\n".join(lines)
 
+    def set_black_cell_info_types(self):
+        """Set info_type (c/n) for black cells based on their blue neighbors"""
+        for y in range(33):
+            for x in range(33):
+                cell = self.grid[y][x]
+                if not isinstance(cell, HexCell) or cell.is_blue or cell.info_type == '.':
+                    continue
+
+                # Get all blue neighbors
+                blue_neighbors = set()
+                for nx, ny in self.get_neighbors(x, y):
+                    neighbor = self.grid[ny][nx]
+                    if isinstance(neighbor, HexCell) and neighbor.is_blue:
+                        blue_neighbors.add((nx, ny))
+
+                # If there are multiple blue neighbors, check if they're consecutive
+                if len(blue_neighbors) > 1:
+                    if self.all_grouped(blue_neighbors):
+                        cell.info_type = 'c'
+                    else:
+                        cell.info_type = 'n'
+
 class LevelGenerator:
     """Main generator class"""
 
-    def generate(self, max_attempts=1) -> Optional[GeneratedLevel]:
+    def generate(self, max_attempts=5) -> Optional[GeneratedLevel]:
         """Generate a complete level with minimized clues"""
         for attempt in range(max_attempts):
             print(f"Generation attempt {attempt + 1}/{max_attempts}...")
@@ -325,6 +382,9 @@ class LevelGenerator:
                     if is_blue:
                         info_type = random.choices(['+', '.'], weights=[0.3, 0.7])[0]
                     level.grid[grid_y][grid_x] = HexCell(grid_x, grid_y, is_blue, info_type=info_type)
+
+        # Set info types for black cells (c/n based on blue neighbor grouping)
+        level.set_black_cell_info_types()
 
         # Reveal a few random non-blue cells
         all_cells = [cell for row in level.grid for cell in row if cell is not None and not cell.is_blue]
@@ -397,6 +457,7 @@ class LevelGenerator:
 
         # Shuffle for random removal order
         random.shuffle(clues)
+        clues = clues[:int(len(clues)*.75)]  # limit number of clues to try removing
         
         # Try removing each clue
         removed_count = 0
