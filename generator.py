@@ -361,26 +361,25 @@ class LevelGenerator:
     def create_pattern(self) -> GeneratedLevel:
         """Create a properly aligned hex pattern of blue/black cells"""
         level = GeneratedLevel()
+        grid_width, grid_height = 33, 33
 
-        width, height = 8, 8  # smaller starter board
-        center_x, center_y = 33 // 2, 33 // 2
+        width, height = 10, 10  # width max is 30 (until fixes done), height max is 31ish
+        center_x, center_y = grid_width // 2, grid_height // 2
         radius = min(width, height) // 2
 
-        for ty in range(width):
-            for tx in range(height):
-                x=tx+(33 - width*3)//2
-                y=ty+(33 - height*3)//2
+        for tx in range(0, width,2):
+            for ty in range(height):
+                x=tx+(-width//2) + grid_width //2
+                y=ty+(-height//2) + grid_height //2
                 # Offset every other row (hex staggering)
-                grid_x = x * 2 + (y % 2)
+                grid_x = x + (y % 2)
                 grid_y = y
 
-                # axial-style hex distance
-                dx = x - center_x
-                dy = y - center_y
-                dz = -dx - dy
-                dist = max(abs(dx), abs(dy), abs(dz))
+                dx = grid_x - center_x
+                dy = grid_y - center_y
+                dist = math.sqrt(dx*dx +dy*dy)
 
-                if dist <= radius*10:
+                if dist <= radius*1.0:
                     is_blue = random.random() < 0.4#density of blue cells
                     info_type = '+'
                     if is_blue:
