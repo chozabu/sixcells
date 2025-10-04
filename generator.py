@@ -487,7 +487,7 @@ class LevelGenerator:
     
     def remove_clue(self, level: GeneratedLevel, clue) -> any:
         """Temporarily remove a clue and return backup. For column hints, also remove from grid."""
-        if clue[0] == 'flower':
+        if clue[0] == 'flower' or clue[0] == 'blackcell':
             _, x, y = clue
             cell = level.grid[y][x]
             backup = (cell.info_type, cell.number)
@@ -509,7 +509,7 @@ class LevelGenerator:
         """Restore a previously removed clue. For column hints, also restore to grid."""
         if backup is None:
             return
-        if clue[0] == 'flower':
+        if clue[0] == 'flower' or clue[0] == 'blackcell':
             _, x, y = clue
             cell = level.grid[y][x]
             cell.info_type, cell.number = backup
