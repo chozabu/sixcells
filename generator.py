@@ -191,7 +191,6 @@ class Scene(common.Scene):
 
         self.solving = 0
         # If it identified all blue cells, it'll have the rest uncovered as well
-        print("remaning", self.remaining)
         return self.remaining == 0
 
     def clear_guesses(self):
@@ -539,22 +538,18 @@ class LevelGenerator:
         cluelen = len(clues)
         cluecount = 0
         for clue in clues:
-            print("=======================")
-            print("clue no: ", cluecount, "/", cluelen)
             cluecount += 1
-            print("trying to remove clue: ", clue)
             # Temporarily remove
             backup = self.remove_clue(level, clue)
 
             # Check if still solvable
             if self.is_solvable(level):
                 removed_count += 1
-                print("+++ removal successful")
+                #print("+++ removal successful: ", clue)
             else:
                 # Restore clue
                 self.restore_clue(level, clue, backup)
-                print("--- removal failed, clue restored")
-            print("=======================")
+                #print("--- removal failed, clue restored: ", clue)
         print(f"Removed {removed_count} redundant clues")
     
     def remove_clue(self, level: GeneratedLevel, clue) -> any:
@@ -623,6 +618,8 @@ class LevelGenerator:
 def main():
     """Command-line interface for the generator"""
     import argparse
+    import os
+    from datetime import datetime
 
     parser = argparse.ArgumentParser(description='Generate Hexcells levels')
     parser.add_argument('--count', type=int, default=1,
@@ -651,8 +648,31 @@ def main():
                        help='Weight for no info type on blue cells (default: 0.7)')
     parser.add_argument('--name', type=str, default='generated',
                        help='Base name for generated files (default: generated)')
+    parser.add_argument('--output-dir', type=str, default='generated_levels',
+                       help='Output directory for generated levels (default: generated_levels)')
 
     args = parser.parse_args()
+
+    # Create output directory
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Print generation parameters
+    print("=" * 60)
+    print("LEVEL GENERATION PARAMETERS")
+    print("=" * 60)
+    print(f"Count:                  {args.count}")
+    print(f"Width:                  {args.width}")
+    print(f"Height:                 {args.height}")
+    print(f"Constrain by radius:    {not args.no_radius}")
+    print(f"Blue density:           {args.blue_density}")
+    print(f"Cell spawn chance:      {args.cell_spawn_chance}")
+    print(f"Column hint chance:     {args.column_hint_chance}")
+    print(f"Columns removed:        {args.min_columns_removed}-{args.max_columns_removed}")
+    print(f"Reveal density:         1/{args.reveal_density}")
+    print(f"Blue info weights:      +:{args.blue_info_plus}, .:{args.blue_info_none}")
+    print(f"Output directory:       {args.output_dir}")
+    print(f"Base name:              {args.name}")
+    print("=" * 60)
 
     generator = LevelGenerator(
         width=args.width,
@@ -672,12 +692,16 @@ def main():
         print(f"\n=== Generating level {i+1}/{args.count} ===")
         level = generator.generate()
         if level:
-            filename = f"{args.name}_{i+1}.hexcells"
+            filename = os.path.join(args.output_dir, f"{args.name}_{i+1}.hexcells")
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(level.to_level_string())
             print(f"Saved to {filename}")
         else:
             print(f"Failed to generate level {i+1}")
+
+    print(f"\n{'=' * 60}")
+    print(f"Generation complete! Levels saved to: {args.output_dir}")
+    print(f"{'=' * 60}")
 
 
 if __name__ == '__main__':
