@@ -342,6 +342,45 @@ class GeneratedLevel:
 class LevelGenerator:
     """Main generator class"""
 
+    def __init__(self,
+                 width=10,
+                 height=10,
+                 constrain_by_radius=True,
+                 blue_density=0.4,
+                 cell_spawn_chance=0.95,
+                 column_hint_chance=0.6,
+                 min_columns_removed=0,
+                 max_columns_removed=2,
+                 reveal_density=7,
+                 blue_info_weight_plus=0.3,
+                 blue_info_weight_none=0.7):
+        """Initialize the level generator with configuration parameters
+
+        Args:
+            width: Width of the pattern (max 30)
+            height: Height of the pattern (max ~31)
+            constrain_by_radius: Whether to constrain cells to a circular radius
+            blue_density: Probability of a cell being blue (0.0-1.0)
+            cell_spawn_chance: Probability of a cell spawning in valid positions (0.0-1.0)
+            column_hint_chance: Probability of adding a column hint per cell (0.0-1.0)
+            min_columns_removed: Minimum number of column hints to remove
+            max_columns_removed: Maximum number of column hints to remove
+            reveal_density: Divisor for revealed cell density (1/reveal_density cells revealed)
+            blue_info_weight_plus: Weight for '+' info type on blue cells
+            blue_info_weight_none: Weight for '.' info type on blue cells
+        """
+        self.width = width
+        self.height = height
+        self.constrain_by_radius = constrain_by_radius
+        self.blue_density = blue_density
+        self.cell_spawn_chance = cell_spawn_chance
+        self.column_hint_chance = column_hint_chance
+        self.min_columns_removed = min_columns_removed
+        self.max_columns_removed = max_columns_removed
+        self.reveal_density = reveal_density
+        self.blue_info_weight_plus = blue_info_weight_plus
+        self.blue_info_weight_none = blue_info_weight_none
+
     def generate(self, max_attempts=5) -> Optional[GeneratedLevel]:
         """Generate a complete level with minimized clues"""
         for attempt in range(max_attempts):
@@ -363,27 +402,32 @@ class LevelGenerator:
         level = GeneratedLevel()
         grid_width, grid_height = 33, 33
 
-        width, height = 10, 10  # width max is 30 (until fixes done), height max is 31ish
+        width, height = self.width, self.height
         center_x, center_y = grid_width // 2, grid_height // 2
         radius = min(width, height) // 2
 
-        for tx in range(0, width,2):
+        for tx in range(0, width, 2):
             for ty in range(height):
-                x=tx+(-width//2) + grid_width //2
-                y=ty+(-height//2) + grid_height //2
+                x = tx + (-width // 2) + grid_width // 2
+                y = ty + (-height // 2) + grid_height // 2
                 # Offset every other row (hex staggering)
                 grid_x = x + (y % 2)
                 grid_y = y
 
                 dx = grid_x - center_x
                 dy = grid_y - center_y
-                dist = math.sqrt(dx*dx +dy*dy)
+                dist = math.sqrt(dx * dx + dy * dy)
 
-                if dist <= radius*1.0 and random.random() < 0.95: # chance of cell existing
-                    is_blue = random.random() < 0.4#density of blue cells
+                # Apply radius constraint if enabled
+                radius_check = (dist <= radius * 1.0) if self.constrain_by_radius else True
+
+                if radius_check and random.random() < self.cell_spawn_chance:
+                    is_blue = random.random() < self.blue_density
                     info_type = '+'
                     if is_blue:
-                        info_type = random.choices(['+', '.'], weights=[0.3, 0.7])[0]
+                        info_type = random.choices(['+', '.'],
+                                                  weights=[self.blue_info_weight_plus,
+                                                          self.blue_info_weight_none])[0]
                     level.grid[grid_y][grid_x] = HexCell(grid_x, grid_y, is_blue, info_type=info_type)
 
         # Set info types for black cells (c/n based on blue neighbor grouping)
@@ -392,7 +436,7 @@ class LevelGenerator:
 
         # Reveal a few random non-blue cells
         all_cells = [cell for row in level.grid for cell in row if cell is not None and not cell.is_blue]
-        num_to_reveal = max(1, len(all_cells) // 7)  # reveal set density of non-blue cells
+        num_to_reveal = max(1, len(all_cells) // self.reveal_density)
         for cell in random.sample(all_cells, num_to_reveal):
             cell.revealed = True
 
@@ -417,7 +461,7 @@ class LevelGenerator:
                 cell = level.grid[y][x]
                 if not (cell and isinstance(cell, HexCell)):
                     continue
-                if random.random() < 0.6:  # chance to add a hint
+                if random.random() < self.column_hint_chance:
                     continue
                 for dx, dy, direction in directions:
                     hx, hy = x + dx, y + dy
@@ -450,11 +494,11 @@ class LevelGenerator:
         return None
 
     def remove_random_column_hint(self, level: 'GeneratedLevel'):
-        """60% chance to remove a random column hint and all its members from the grid"""
+        """Remove random column hints and all their members from the grid"""
 
         if not level.column_hints:
             return
-        removenum = random.randrange(0,2)
+        removenum = random.randint(self.min_columns_removed, self.max_columns_removed)
         for r in range(removenum):
             if not level.column_hints:
                 return
@@ -578,13 +622,57 @@ class LevelGenerator:
 
 def main():
     """Command-line interface for the generator"""
-    generator = LevelGenerator()
-    for i in range(1):
-        print(f"\n=== Generating level {i+1}/{1} ===")
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Generate Hexcells levels')
+    parser.add_argument('--count', type=int, default=1,
+                       help='Number of levels to generate (default: 1)')
+    parser.add_argument('--width', type=int, default=10,
+                       help='Width of the pattern (default: 10, max: 30)')
+    parser.add_argument('--height', type=int, default=10,
+                       help='Height of the pattern (default: 10, max: ~31)')
+    parser.add_argument('--no-radius', action='store_true',
+                       help='Disable radius constraint (fills rectangular area)')
+    parser.add_argument('--blue-density', type=float, default=0.4,
+                       help='Probability of a cell being blue (default: 0.4)')
+    parser.add_argument('--cell-spawn-chance', type=float, default=0.95,
+                       help='Probability of a cell spawning (default: 0.95)')
+    parser.add_argument('--column-hint-chance', type=float, default=0.6,
+                       help='Probability of adding column hints (default: 0.6)')
+    parser.add_argument('--min-columns-removed', type=int, default=0,
+                       help='Minimum column hints to remove (default: 0)')
+    parser.add_argument('--max-columns-removed', type=int, default=2,
+                       help='Maximum column hints to remove (default: 2)')
+    parser.add_argument('--reveal-density', type=int, default=7,
+                       help='Reveal 1/N non-blue cells (default: 7)')
+    parser.add_argument('--blue-info-plus', type=float, default=0.3,
+                       help='Weight for + info type on blue cells (default: 0.3)')
+    parser.add_argument('--blue-info-none', type=float, default=0.7,
+                       help='Weight for no info type on blue cells (default: 0.7)')
+    parser.add_argument('--name', type=str, default='generated',
+                       help='Base name for generated files (default: generated)')
+
+    args = parser.parse_args()
+
+    generator = LevelGenerator(
+        width=args.width,
+        height=args.height,
+        constrain_by_radius=not args.no_radius,
+        blue_density=args.blue_density,
+        cell_spawn_chance=args.cell_spawn_chance,
+        column_hint_chance=args.column_hint_chance,
+        min_columns_removed=args.min_columns_removed,
+        max_columns_removed=args.max_columns_removed,
+        reveal_density=args.reveal_density,
+        blue_info_weight_plus=args.blue_info_plus,
+        blue_info_weight_none=args.blue_info_none
+    )
+
+    for i in range(args.count):
+        print(f"\n=== Generating level {i+1}/{args.count} ===")
         level = generator.generate()
-        levelname = "generated"
         if level:
-            filename = f"{levelname}_{i+1}.hexcells"
+            filename = f"{args.name}_{i+1}.hexcells"
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(level.to_level_string())
             print(f"Saved to {filename}")
