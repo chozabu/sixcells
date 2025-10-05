@@ -379,7 +379,7 @@ class LevelGenerator:
                 dy = grid_y - center_y
                 dist = math.sqrt(dx*dx +dy*dy)
 
-                if dist <= radius*1.0:
+                if dist <= radius*1.0 and random.random() < 0.95: # chance of cell existing
                     is_blue = random.random() < 0.4#density of blue cells
                     info_type = '+'
                     if is_blue:
@@ -389,13 +389,16 @@ class LevelGenerator:
         # Set info types for black cells (c/n based on blue neighbor grouping)
         level.set_black_cell_info_types()
 
+
         # Reveal a few random non-blue cells
         all_cells = [cell for row in level.grid for cell in row if cell is not None and not cell.is_blue]
         num_to_reveal = max(1, len(all_cells) // 7)  # reveal set density of non-blue cells
         for cell in random.sample(all_cells, num_to_reveal):
             cell.revealed = True
 
+
         self.add_column_hints(level)
+        self.remove_random_column_hint(level)
 
         return level
     
@@ -440,12 +443,37 @@ class LevelGenerator:
         if not blue_indices:
             return None
         # Check if consecutive
-        is_consecutive = all(blue_indices[i] + 1 == blue_indices[i + 1] 
+        is_consecutive = all(blue_indices[i] + 1 == blue_indices[i + 1]
                             for i in range(len(blue_indices) - 1))
         if len(blue_indices) > 1:
             return 'c' if is_consecutive else 'n'
         return None
-    
+
+    def remove_random_column_hint(self, level: 'GeneratedLevel'):
+        """60% chance to remove a random column hint and all its members from the grid"""
+
+        if not level.column_hints:
+            return
+        removenum = random.randrange(0,2)
+        for r in range(removenum):
+            if not level.column_hints:
+                return
+            # Pick a random column hint
+            hint = random.choice(level.column_hints)
+
+            # Get all cells in this line
+            line_cells = level.get_line_cells(hint.x, hint.y, hint.direction)
+
+            # Remove all cells in the line from the grid
+            for cx, cy in line_cells:
+                level.grid[cy][cx] = None
+
+            # Remove the hint itself from the grid
+            level.grid[hint.y][hint.x] = None
+
+            # Remove the hint from the column_hints list
+            level.column_hints.remove(hint)
+
     def minimize_clues(self, level: GeneratedLevel):
         """Remove redundant clues while maintaining solvability"""
         clues = []
