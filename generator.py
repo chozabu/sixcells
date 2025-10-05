@@ -352,7 +352,8 @@ class LevelGenerator:
                  max_columns_removed=2,
                  reveal_density=7,
                  blue_info_weight_plus=0.3,
-                 blue_info_weight_none=0.7):
+                 blue_info_weight_none=0.7,
+                 clue_removal_ratio=0.95):
         """Initialize the level generator with configuration parameters
 
         Args:
@@ -367,6 +368,7 @@ class LevelGenerator:
             reveal_density: Divisor for revealed cell density (1/reveal_density cells revealed)
             blue_info_weight_plus: Weight for '+' info type on blue cells
             blue_info_weight_none: Weight for '.' info type on blue cells
+            clue_removal_ratio: Ratio of clues to attempt removing (0.0-1.0, lower=easier, higher=harder)
         """
         self.width = width
         self.height = height
@@ -379,8 +381,9 @@ class LevelGenerator:
         self.reveal_density = reveal_density
         self.blue_info_weight_plus = blue_info_weight_plus
         self.blue_info_weight_none = blue_info_weight_none
+        self.clue_removal_ratio = clue_removal_ratio
 
-    def generate(self, max_attempts=5) -> Optional[GeneratedLevel]:
+    def generate(self, max_attempts=10) -> Optional[GeneratedLevel]:
         """Generate a complete level with minimized clues"""
         for attempt in range(max_attempts):
             print(f"Generation attempt {attempt + 1}/{max_attempts}...")
@@ -390,11 +393,55 @@ class LevelGenerator:
                 print("Pattern is solvable, minimizing clues...")
                 self.minimize_clues(level)
                 print(f"Generated level with {self.count_clues(level)} clues")
+                self._set_level_metadata(level)
                 return level
             print("Pattern not solvable, retrying...")
 
         print(f"Failed to generate solvable level after {max_attempts} attempts, returning anyway")
+        self._set_level_metadata(level)
         return level
+
+    def _set_level_metadata(self, level: GeneratedLevel):
+        """Set the level title and author based on generation parameters"""
+        # Default values for comparison
+        defaults = {
+            'width': 10, 'height': 10, 'constrain_by_radius': True,
+            'blue_density': 0.4, 'cell_spawn_chance': 0.95,
+            'column_hint_chance': 0.6, 'min_columns_removed': 0,
+            'max_columns_removed': 2, 'reveal_density': 7,
+            'blue_info_weight_plus': 0.3, 'blue_info_weight_none': 0.7,
+            'clue_removal_ratio': 0.75
+        }
+
+        # Build title from non-default size parameters
+        title_parts = []
+        if self.width != defaults['width'] or self.height != defaults['height']:
+            title_parts.append(f"{self.width}x{self.height}")
+        if not self.constrain_by_radius:
+            title_parts.append("Rect")
+
+        # Build author from non-default gameplay parameters
+        author_parts = []
+        if self.blue_density != defaults['blue_density']:
+            author_parts.append(f"blue:{self.blue_density:.2f}")
+        if self.cell_spawn_chance != defaults['cell_spawn_chance']:
+            author_parts.append(f"spawn:{self.cell_spawn_chance:.2f}")
+        if self.column_hint_chance != defaults['column_hint_chance']:
+            author_parts.append(f"hints:{self.column_hint_chance:.2f}")
+        if (self.min_columns_removed != defaults['min_columns_removed'] or
+            self.max_columns_removed != defaults['max_columns_removed']):
+            author_parts.append(f"rm:{self.min_columns_removed}-{self.max_columns_removed}")
+        if self.reveal_density != defaults['reveal_density']:
+            author_parts.append(f"reveal:1/{self.reveal_density}")
+        if (self.blue_info_weight_plus != defaults['blue_info_weight_plus'] or
+            self.blue_info_weight_none != defaults['blue_info_weight_none']):
+            author_parts.append(f"info:{self.blue_info_weight_plus:.1f}/{self.blue_info_weight_none:.1f}")
+        if self.clue_removal_ratio != defaults['clue_removal_ratio']:
+            author_parts.append(f"clue_rm:{self.clue_removal_ratio:.2f}")
+
+        # Set title and author
+        level.title = " ".join(title_parts) if title_parts else "Generated Level"
+        level.author = " ".join(author_parts) if author_parts else "Generator"
     
     def create_pattern(self) -> GeneratedLevel:
         """Create a properly aligned hex pattern of blue/black cells"""
@@ -531,7 +578,7 @@ class LevelGenerator:
 
         # Shuffle for random removal order
         random.shuffle(clues)
-        clues = clues[:int(len(clues)*.75)]  # limit number of clues to try removing
+        clues = clues[:int(len(clues) * self.clue_removal_ratio)]  # limit number of clues to try removing
         
         # Try removing each clue
         removed_count = 0
@@ -646,6 +693,8 @@ def main():
                        help='Weight for + info type on blue cells (default: 0.3)')
     parser.add_argument('--blue-info-none', type=float, default=0.7,
                        help='Weight for no info type on blue cells (default: 0.7)')
+    parser.add_argument('--clue-removal-ratio', type=float, default=0.75,
+                       help='Ratio of clues to attempt removing, lower=easier (default: 0.75)')
     parser.add_argument('--name', type=str, default='generated',
                        help='Base name for generated files (default: generated)')
     parser.add_argument('--output-dir', type=str, default='generated_levels',
@@ -670,6 +719,7 @@ def main():
     print(f"Columns removed:        {args.min_columns_removed}-{args.max_columns_removed}")
     print(f"Reveal density:         1/{args.reveal_density}")
     print(f"Blue info weights:      +:{args.blue_info_plus}, .:{args.blue_info_none}")
+    print(f"Clue removal ratio:     {args.clue_removal_ratio} (lower=easier)")
     print(f"Output directory:       {args.output_dir}")
     print(f"Base name:              {args.name}")
     print("=" * 60)
@@ -685,7 +735,8 @@ def main():
         max_columns_removed=args.max_columns_removed,
         reveal_density=args.reveal_density,
         blue_info_weight_plus=args.blue_info_plus,
-        blue_info_weight_none=args.blue_info_none
+        blue_info_weight_none=args.blue_info_none,
+        clue_removal_ratio=args.clue_removal_ratio
     )
 
     for i in range(args.count):
@@ -695,7 +746,7 @@ def main():
             filename = os.path.join(args.output_dir, f"{args.name}_{i+1}.hexcells")
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(level.to_level_string())
-            print(f"Saved to {filename}")
+            print(f"Saved to {filename}", " title  ", level.title, " by ", level.author)
         else:
             print(f"Failed to generate level {i+1}")
 
