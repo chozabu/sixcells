@@ -596,11 +596,11 @@ class LevelGenerator:
                     if 0 <= hx < width and 0 <= hy < height:
                         if level.grid[hy][hx] is None:
                             # Count blue cells in this line (including this one)
-                            #line_cells = level.get_line_cells(x, y, direction) #we don't need this here?
                             hex_cells = level.get_hex_cells_in_line(x, y, direction)
                             blue_cells = [(cx, cy) for cx, cy in hex_cells if level.grid[cy][cx].is_blue]
-                            consecutive = self.check_consecutive(hex_cells, blue_cells, level)
-                            hint = ColumnHint(hx, hy, direction, len(blue_cells), consecutive)
+
+                            # Consecutive info will be calculated in recheck_hints
+                            hint = ColumnHint(hx, hy, direction, len(blue_cells), consecutive=None)
                             level.column_hints.append(hint)
                             level.grid[hy][hx] = hint
 
