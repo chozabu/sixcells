@@ -53,6 +53,13 @@ class ColumnHint:
         return self.direction + info
 
 
+# Direction deltas: (dx, dy) for moving in a column hint's direction
+direction_deltas = {
+    '\\': (1, 1),  # diagonal down-right
+    '|': (0, 2),  # straight down
+    '/': (-1, 1)  # diagonal down-left
+}
+
 #============================== from player.py
 
 class Cell(common.Cell):
@@ -263,41 +270,21 @@ class GeneratedLevel:
         """
         cells = []
 
-        direction_deltas = {
-            '\\': (1, 1),  # diagonal down-right
-            '|': (0, 2),  # straight down
-            '/': (-1, 1)  # diagonal down-left
-        }
+        delta = direction_deltas.get(direction)
+        if not delta:
+            print("Invalid direction:", direction)
+            return cells
 
-        if direction == '|':  # vertical
-            for ny in range(33):
-                if self.grid[ny][x]:
-                    cells.append((x, ny))
-        elif direction == '\\':  # diagonal \
-            # Move along the diagonal
-            dx, dy = x, y
-            while dx >= 0 and dy >= 0:
-                dx -= 1
-                dy -= 1
-            dx += 1
-            dy += 1
-            while dx < 33 and dy < 33:
-                if self.grid[dy][dx]:
-                    cells.append((dx, dy))
-                dx += 1
-                dy += 1
-        elif direction == '/':  # diagonal /
-            dx, dy = x, y
-            while dx >= 0 and dy < 33:
-                dx -= 1
-                dy += 1
-            dx += 1
-            dy -= 1
-            while dx < 33 and dy >= 0:
-                if self.grid[dy][dx]:
-                    cells.append((dx, dy))
-                dx += 1
-                dy -= 1
+        dx, dy = delta
+
+        cx, cy = x, y
+
+        # Move forward collecting all non-None cells
+        while 0 <= cx < 33 and 0 <= cy < 33:
+            if self.grid[cy][cx]:
+                cells.append((cx, cy))
+            cx += dx
+            cy += dy
 
         return cells
 
@@ -531,12 +518,6 @@ class LevelGenerator:
                 continue
 
             # Try to move hint into empty space in its direction
-            # Direction deltas: (dx, dy) for moving in the hint's direction
-            direction_deltas = {
-                '\\': (1, 1),    # diagonal down-right
-                '|': (0, 2),     # straight down
-                '/': (-1, 1)     # diagonal down-left
-            }
 
             dx, dy = direction_deltas[hint.direction]
 
