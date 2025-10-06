@@ -518,12 +518,15 @@ class LevelGenerator:
                 continue
 
             # Try to move hint into empty space in its direction
-
             dx, dy = direction_deltas[hint.direction]
 
-            # Check if we can move the hint down
-            new_x, new_y = hint.x + dx, hint.y + dy
-            if (0 <= new_x < 33 and 0 <= new_y < 33):
+            # Try moving the hint up to 3 times
+            hint_removed = False
+            for _ in range(3):
+                new_x, new_y = hint.x + dx, hint.y + dy
+                if not (0 <= new_x < 33 and 0 <= new_y < 33):
+                    break
+
                 if level.grid[new_y][new_x] is None:
                     # Move the hint
                     level.grid[hint.y][hint.x] = None
@@ -534,35 +537,14 @@ class LevelGenerator:
                     # Collision with another hint, remove this one
                     level.grid[hint.y][hint.x] = None
                     hints_to_remove.append(hint)
-                    continue
-            # try moving a second time, incase there are two spaces
-            new_x, new_y = hint.x + dx, hint.y + dy
-            if (0 <= new_x < 33 and 0 <= new_y < 33):
-                if level.grid[new_y][new_x] is None:
-                    # Move the hint
-                    level.grid[hint.y][hint.x] = None
-                    hint.x = new_x
-                    hint.y = new_y
-                    level.grid[new_y][new_x] = hint
-                elif isinstance(level.grid[new_y][new_x], ColumnHint):
-                    # Collision with another hint, remove this one
-                    level.grid[hint.y][hint.x] = None
-                    hints_to_remove.append(hint)
-                    continue
-            # try moving a third time, incase there are two spaces
-            new_x, new_y = hint.x + dx, hint.y + dy
-            if (0 <= new_x < 33 and 0 <= new_y < 33):
-                if level.grid[new_y][new_x] is None:
-                    # Move the hint
-                    level.grid[hint.y][hint.x] = None
-                    hint.x = new_x
-                    hint.y = new_y
-                    level.grid[new_y][new_x] = hint
-                elif isinstance(level.grid[new_y][new_x], ColumnHint):
-                    # Collision with another hint, remove this one
-                    level.grid[hint.y][hint.x] = None
-                    hints_to_remove.append(hint)
-                    continue
+                    hint_removed = True
+                    break
+                else:
+                    # Cell is occupied by something else, stop trying to move
+                    break
+
+            if hint_removed:
+                continue
 
             # Recalculate blue cells and consecutive info
             blue_cells = [(cx, cy) for cx, cy in hex_cells
