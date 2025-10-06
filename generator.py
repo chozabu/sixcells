@@ -260,9 +260,13 @@ class GeneratedLevel:
         return len(grouped) == len(positions)
 
     def get_line_cells(self, x, y, direction) -> List[Tuple[int, int]]:
-        """Get all cells in a line from a given position and direction"""
+        """Get all cells in a line from a given position and direction
+
+        Returns positions of all non-None cells (both HexCells and ColumnHints).
+        This is needed for check_consecutive to properly calculate indices.
+        """
         cells = []
-        
+
         if direction == '|':  # vertical
             for ny in range(33):
                 if self.grid[ny][x]:
@@ -292,8 +296,14 @@ class GeneratedLevel:
                     cells.append((dx, dy))
                 dx += 1
                 dy -= 1
-                
+
         return cells
+
+    def get_hex_cells_in_line(self, x, y, direction) -> List[Tuple[int, int]]:
+        """Get only HexCell positions in a line (filters out ColumnHints)"""
+        line_cells = self.get_line_cells(x, y, direction)
+        return [(cx, cy) for cx, cy in line_cells
+                if isinstance(self.grid[cy][cx], HexCell)]
     
     def to_level_string(self) -> str:
         """Convert to Hexcells level format"""
@@ -383,7 +393,7 @@ class LevelGenerator:
         self.blue_info_weight_none = blue_info_weight_none
         self.clue_removal_ratio = clue_removal_ratio
 
-    def generate(self, max_attempts=10) -> Optional[GeneratedLevel]:
+    def generate(self, max_attempts=20) -> Optional[GeneratedLevel]:
         """Generate a complete level with minimized clues"""
         for attempt in range(max_attempts):
             print(f"Generation attempt {attempt + 1}/{max_attempts}...")
@@ -397,9 +407,12 @@ class LevelGenerator:
                 return level
             print("Pattern not solvable, retrying...")
 
-        print(f"Failed to generate solvable level after {max_attempts} attempts, returning anyway")
-        self._set_level_metadata(level)
-        return level
+        #print(f"Failed to generate solvable level after {max_attempts} attempts, returning anyway")
+        #self._set_level_metadata(level)
+        #return level
+
+        print(f"Failed to generate solvable level after {max_attempts} attempts, returning None")
+        return None
 
     def _set_level_metadata(self, level: GeneratedLevel):
         """Set the level title and author based on generation parameters"""
@@ -476,8 +489,7 @@ class LevelGenerator:
                                                           self.blue_info_weight_none])[0]
                     level.grid[grid_y][grid_x] = HexCell(grid_x, grid_y, is_blue, info_type=info_type)
 
-        # Set info types for black cells (c/n based on blue neighbor grouping)
-        level.set_black_cell_info_types()
+
 
 
         # Reveal a few random non-blue cells
@@ -487,11 +499,81 @@ class LevelGenerator:
             cell.revealed = True
 
 
+
         self.add_column_hints(level)
         self.remove_random_column_hint(level)
 
+        self.recheck_hints(level)
+
+        # Set info types for black cells (c/n based on blue neighbor grouping)
+        level.set_black_cell_info_types()
+
         return level
-    
+
+    def recheck_hints(self, level: 'GeneratedLevel'):
+        """Recheck and fix column hints after cells have been removed"""
+        hints_to_remove = []
+
+        for hint in level.column_hints:
+            # Get all cells in this line
+            #line_cells = level.get_line_cells(hint.x, hint.y, hint.direction)
+            hex_cells = level.get_hex_cells_in_line(hint.x, hint.y, hint.direction)
+
+            # Check if the column still has any members
+            has_members = len(hex_cells) > 0
+
+            if not has_members:
+                # Remove hint from grid and mark for removal from list
+                level.grid[hint.y][hint.x] = None
+                hints_to_remove.append(hint)
+                continue
+
+            # Try to move hint into empty space in its direction
+            # Direction deltas: (dx, dy) for moving in the hint's direction
+            direction_deltas = {
+                '\\': (1, 1),    # diagonal down-right
+                '|': (0, 2),     # straight down
+                '/': (-1, 1)     # diagonal down-left
+            }
+
+            dx, dy = direction_deltas[hint.direction]
+            new_x, new_y = hint.x + dx, hint.y + dy
+
+
+            # Check if we can move the hint down
+            if (0 <= new_x < 33 and 0 <= new_y < 33):
+                if level.grid[new_y][new_x] is None:
+                    # Move the hint
+                    level.grid[hint.y][hint.x] = None
+                    hint.x = new_x
+                    hint.y = new_y
+                    level.grid[new_y][new_x] = hint
+                elif isinstance(level.grid[new_y][new_x], ColumnHint):
+                    # Collision with another hint, remove this one
+                    level.grid[hint.y][hint.x] = None
+                    hints_to_remove.append(hint)
+                    continue
+
+            # Recalculate blue cells and consecutive info
+            blue_cells = [(cx, cy) for cx, cy in hex_cells
+                         if level.grid[cy][cx].is_blue]
+
+            # Update the number count
+            hint.number = len(blue_cells)
+
+            # Recalculate consecutive/non-consecutive
+            if len(blue_cells) <= 1:
+                # Single cell or no cells - no togetherness info needed
+                hint.consecutive = None
+            else:
+                # Check if blue cells are consecutive
+                hint.consecutive = self.check_consecutive(hex_cells, blue_cells, level)
+
+        # Remove hints that fail checks above
+        for hint in hints_to_remove:
+            level.column_hints.remove(hint)
+
+
     def add_column_hints(self, level: 'GeneratedLevel'):
         """Add column/line hints above each HexCell if there is space (up+left, up two spaces, up+right)."""
         height = len(level.grid)
@@ -514,9 +596,10 @@ class LevelGenerator:
                     if 0 <= hx < width and 0 <= hy < height:
                         if level.grid[hy][hx] is None:
                             # Count blue cells in this line (including this one)
-                            line_cells = level.get_line_cells(x, y, direction)
-                            blue_cells = [c for c in line_cells if level.grid[c[1]][c[0]] and isinstance(level.grid[c[1]][c[0]], HexCell) and level.grid[c[1]][c[0]].is_blue]
-                            consecutive = self.check_consecutive(line_cells, blue_cells, level)
+                            #line_cells = level.get_line_cells(x, y, direction) #we don't need this here?
+                            hex_cells = level.get_hex_cells_in_line(x, y, direction)
+                            blue_cells = [(cx, cy) for cx, cy in hex_cells if level.grid[cy][cx].is_blue]
+                            consecutive = self.check_consecutive(hex_cells, blue_cells, level)
                             hint = ColumnHint(hx, hy, direction, len(blue_cells), consecutive)
                             level.column_hints.append(hint)
                             level.grid[hy][hx] = hint
