@@ -396,10 +396,6 @@ class LevelGenerator:
                 return level
             print("Pattern not solvable, retrying...")
 
-        #print(f"Failed to generate solvable level after {max_attempts} attempts, returning anyway")
-        #self._set_level_metadata(level)
-        #return level
-
         print(f"Failed to generate solvable level after {max_attempts} attempts, returning None")
         return None
 
@@ -505,7 +501,6 @@ class LevelGenerator:
 
         for hint in level.column_hints:
             # Get all cells in this line
-            #line_cells = level.get_line_cells(hint.x, hint.y, hint.direction)
             hex_cells = level.get_hex_cells_in_line(hint.x, hint.y, hint.direction)
 
             # Check if the column still has any members
@@ -649,10 +644,7 @@ class LevelGenerator:
         
         # Try removing each clue
         removed_count = 0
-        cluelen = len(clues)
-        cluecount = 0
         for clue in clues:
-            cluecount += 1
             # Temporarily remove
             backup = self.remove_clue(level, clue)
 
@@ -732,7 +724,6 @@ def main():
     """Command-line interface for the generator"""
     import argparse
     import os
-    from datetime import datetime
 
     parser = argparse.ArgumentParser(description='Generate Hexcells levels')
     parser.add_argument('--count', type=int, default=1,
